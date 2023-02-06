@@ -25,6 +25,7 @@ X <- array(NA,dim = c(N,d))
 A <- array(NA,dim = c(N,d))
 S <- array(NA,dim = c(N,d))
 
+set.seed(123)
 for (i in 1:N) {
   Z[i,] <- rmvnorm(1, mean=c(0,0,0,0), sigma=sigma)
   S[i,] <- rlevy(d, m=0, s=1)
@@ -44,9 +45,11 @@ g.inv <- function(x,R,phi){
   return(out2)
 }
 
+library(mvtnorm)
 log.post.s <- function(x,phi,s){
   R <- (W)%*%s
-  out2 <- sapply(c(g.inv(x,R,phi)),dnorm)
+  Z_tmp <- g.inv(x,R,phi)
+  out2 <- sapply(c(Z_tmp),dnorm)
   if(any(is.na(out2))){
     return(-Inf)
   }
@@ -56,29 +59,30 @@ log.post.s <- function(x,phi,s){
   }else{
     out4 <- sapply(c(s),plevy)
   }
-  if(is.null(dim(g.inv(x,R,phi)))){
-    out1 <- 0
-    out <- out1 + sum(log(out3) + log(out4))
-    return(out)
-  }
-  out1 <- dmvnorm(g.inv(x,R,phi), mean=c(0,0,0,0), sigma=sigma, log = T)
+  # if(is.null(dim(Z_tmp))){
+  #   out1 <- 0
+  #   out <- out1 + sum(log(out3) + log(out4))
+  #   return(out)
+  # }
+  out1 <- dmvnorm(Z_tmp, mean=c(0,0,0,0), sigma=sigma, log = TRUE)
   out <- out1 + sum(log(out3) + log(out4))
   return(out)
 }
 
 log.post.phi <- function(x,phi,s){
   R <- (W)%*%s
-  out2 <- sapply(c(g.inv(x,R,phi)),dnorm)
+  Z_tmp <- g.inv(x,R,phi)
+  out2 <- sapply(c(Z_tmp),dnorm)
   if(any(is.na(out2))){
     return(-Inf)
   }
   out3 <- ((R^phi)/x^2)/out2
-  if(is.null(dim(g.inv(x,R,phi)))){
-    out1 <- 0
-    out <- out1 + sum(log(out3))
-    return(out)
-  }
-  out1 <- dmvnorm(g.inv(x,R,phi), mean=c(0,0,0,0), sigma=sigma, log = T)
+  # if(is.null(dim(Z_tmp))){
+  #   out1 <- 0
+  #   out <- out1 + sum(log(out3))
+  #   return(out)
+  # }
+  out1 <- dmvnorm(Z_tmp, mean=c(0,0,0,0), sigma=sigma, log = TRUE)
   out <- out1 + sum(log(out3))
   return(out)
 }
@@ -93,9 +97,9 @@ log.post.phi.total <- function(X,phi,S){
 }
 
 
-temp <- function(x){
+temp <- function(x, index){
   current.phi <- phi
-  current.phi[1] <- x
+  current.phi[index] <- x
   n <- nrow(X)
   out1 <- array(0,n)
   for (i in 1:n) {
@@ -104,14 +108,41 @@ temp <- function(x){
   return(sum(out1))
 }
 
-phi.start <- seq(0.519,0.521,length.out = 100)
-new.vec <- array(NA,100)
+index = 1
+phi.start1 <- seq(phi[index]-0.003, phi[index]+0.003, length.out = 100)
+new.vec1 <- array(NA,100)
 for (i in 1:100) {
-  new.vec[i] <- temp(phi.start[i])
+  new.vec1[i] <- temp(phi.start1[i], index=index)
 }
 
+index = 2
+phi.start2 <- seq(phi[index]-0.003, phi[index]+0.003, length.out = 100)
+new.vec2 <- array(NA,100)
+for (i in 1:100) {
+  new.vec2[i] <- temp(phi.start2[i], index=index)
+}
 
-plot(phi.start,new.vec, type = "l")
+index = 3
+phi.start3 <- seq(phi[index]-0.003, phi[index]+0.02, length.out = 100)
+new.vec3 <- array(NA,100)
+for (i in 1:100) {
+  new.vec3[i] <- temp(phi.start3[i], index=index)
+}
+
+index = 4
+phi.start4 <- seq(phi[index]-0.003, phi[index]+0.02, length.out = 100)
+new.vec4 <- array(NA,100)
+for (i in 1:100) {
+  new.vec4[i] <- temp(phi.start4[i], index=index)
+}
+
+par(mfrow = c(2,2))
+plot(phi.start1,new.vec1, type = "l", main=expression(phi[1]))
+plot(phi.start2,new.vec2, type = "l", main=expression(phi[2]))
+plot(phi.start3,new.vec3, type = "l", main=expression(phi[3]))
+plot(phi.start4,new.vec4, type = "l", main=expression(phi[4]))
+par(mfrow = c(1,1))
+
 
 # MH Algorithm ------------------------------------------------------------
 
@@ -119,8 +150,7 @@ plot(phi.start,new.vec, type = "l")
 
 phi <-  c(0.52,0.56,0.6,0.65)
 lambda1 <- 0.0001
-N <- 100
-M <- 10000
+M <- 1000
 s.mc  <- array(NA,dim = c(M,N,4))
 phi.mc <- array(NA,dim = c(M,4))
 acc.s <- array(0, dim = c(M, N))
@@ -130,11 +160,12 @@ r.phi  <- array(NA,M)
 acc.phi  <- array(NA,M)
 
 
-oldlambda <- c(0.0001,0.00000001)
+oldlambda <- c(0.001,0.00001)
 
 for (i in 1:M) {
+  if(i %% 500 == 0) cat("Done with", i, "iterations\n")
   for (j in 1:N){
-    s.t <- as.vector(S[j,] + rmvnorm(1,c(0,0,0,0),diag(4))*0.001)
+    s.t <- as.vector(S[j,] + rmvnorm(1,c(0,0,0,0),diag(4))*0.01)
     r.s[i,j] <- exp(log.post.s(X[j,], phi, s.t) - log.post.s(X[j,], phi, S[j,]))
     if (is.na(r.s[i,j])){
       s.mc[i,j,] <- S[j,]
@@ -146,7 +177,7 @@ for (i in 1:M) {
     }
     s.mc[i,j,] <- S[j,]
   }
-  phi.t <- as.vector( phi + abs(rmvnorm(1,c(0,0,0,0),diag(4)*0.000001) ))
+  phi.t <- as.vector( phi + rmvnorm(1,c(0,0,0,0),diag(4)*0.001))
   r.phi[i] <- exp(log.post.phi.total(X, phi.t, S)/N - log.post.phi.total(X, phi, S)/N)
   if (is.na(r.phi[i])){
     phi.mc[i,] <- phi
